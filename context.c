@@ -24,78 +24,296 @@ char *local_strdup(const char *s1)
   return ret;
 #endif
 }
+#define ERROR(x) { lua_pushstring(l, x); lua_error(l); }
+#define getn(L,n) (luaL_checktype(L, n, LUA_TTABLE), luaL_getn(L, n))
 
-/* new_context returns a lua userdata variable which has two important 
- * properties:
- *
- * 1. It is a pointer to the pointer to a context struct, which carries the 
- *    C-internal state for this SASL negotiation; and 
- * 2. It has a metatable associated with it that will call our destructor when 
- *    Lua decides to garbage-collect the userdata variable.
- */
-struct _krb5_ctx **new_context(lua_State *L)
+int setRealmFunc(lua_State *l)
 {
-  struct _krb5_ctx *data       = NULL;
-  struct _krb5_ctx **luserdata = NULL;
-
-  data = malloc(sizeof(struct _krb5_ctx));
-  if (!data)
-    return NULL;
-
-  data->magic        = CYRUSSASL_MAGIC;
-
-  /* Now that we have the context struct, we need to construct a Lua variable
-   * to carry the data. And that variable needs to callback to our __gc method
-   * for it in order to deallocate the memory we've just allocated. 
-   * 
-   * Note that we're allocing a new userdata object of the size of the 
-   * _pointer_ to our new struct.
-   */
-
-  luserdata = (struct _krb5_ctx **) lua_newuserdata(L, sizeof(data));
-  if (!luserdata) {
-    lua_pushstring(L, "Unable to alloc newuserdata");
-    lua_error(L);
-    free(data);
-    return NULL;
-  }
-  *luserdata = data;                /* Store the pointer in the userdata */
-  luaL_getmetatable(L, MODULENAME); /* Retrieve the metatable w/ __gc hook */
-  lua_setmetatable(L, -2);          /* Set luserdata's metatable to that one */
-
-  return luserdata;
-}
-
-struct _krb5_ctx *get_context(lua_State *l, int idx)
-{
-  struct _krb5_ctx **ctxp = (struct _sasl_ctx **)lua_touserdata(l, idx);
-  if (ctxp == NULL) {
-    lua_pushstring(l, "userdata is NULL");
-    lua_error(l);
-    return NULL;
+  int numargs = lua_gettop(l);
+  if (numargs != 1) {
+    ERROR("usage: kadmin.setRealm(<realm>)");
   }
 
-  return *ctxp;
+  const char *realm = lua_tostring(l, 1);
+
+  lua_pushinteger(l, kadm_setRealm(realm));
+  return 1; // number of arguments on the stack
 }
 
-void free_context(struct _krb5_ctx *ctx)
+int setAdminServerFunc(lua_State *l)
 {
-  if (!ctx || ctx->magic != CYRUSSASL_MAGIC) 
-    return;
-
-  free(ctx);
-}
-
-int gc_context(lua_State *L)
-{
-  struct _krb5_ctx **luadata = (struct _krb5_ctx **)lua_touserdata(L, 1);
-
-  if (luadata == NULL) {
-    lua_pushstring(L, "userdata is NULL");
-    lua_error(L);
-    return 0;
+  int numargs = lua_gettop(l);
+  if (numargs != 1) {
+    ERROR("usage: kadmin.setAdminServer(<adminServer:port>)");
   }
 
-  free_context(*luadata);
-  return 0;
+  const char *svr = lua_tostring(l, 1);
+
+  lua_pushinteger(l, kadm_setAdminServer(svr));
+  return 1; // number of arguments on the stack
+}
+
+int initWithSkeyFunc(lua_State *l)
+{
+  int numargs = lua_gettop(l);
+  if (numargs < 2 || numargs > 3) {
+    ERROR("usage: kadmin.initWithSkey(<principal>, <keytab> [, servicename])");
+  }
+
+  const char *princ = lua_tostring(l, 1);
+  const char *keytab = lua_tostring(l, 2);
+  const char *servicename = NULL;
+  if (numargs == 3) {
+    servicename = lua_tostring(l, 3);
+  }
+
+  printf("princ: %s; keytab: %s; servicename: %s\n", princ, keytab, servicename ? servicename : "<NULL>");
+  int err = kadm_initWithSkey(princ, keytab, servicename);
+
+  lua_pushinteger(l, err);
+  return 1; // number of arguments on the stack
+}
+
+int initWithPasswordFunc(lua_State *l)
+{
+  int numargs = lua_gettop(l);
+  if (numargs < 2 || numargs > 3) {
+    ERROR("usage: kadmin.initWithPassword(<principal>, <password> [, servicename])");
+  }
+
+  const char *princ = lua_tostring(l, 1);
+  const char *password = lua_tostring(l, 2);
+  const char *servicename = NULL;
+  if (numargs == 3) {
+    servicename = lua_tostring(l, 3);
+  }
+  
+  int err = kadm_initWithPassword(princ, password, servicename);
+
+  lua_pushinteger(l, err);
+  return 1; // number of arguments on the stack
+}
+
+int getPrincipalFunc(lua_State *l)
+{
+  int numargs = lua_gettop(l);
+  if (numargs != 1) {
+    ERROR("usage: kadmin.getPrincipal(<principal>)");
+  }
+
+  const char *princ = lua_tostring(l, 1);
+  kadm5_principal_ent_rec result;
+  kadm5_ret_t err = kadm_getPrinc(princ, &result);
+  if (err) {
+    // FIXME: probably not the best, just returning nil - should raise some errors?
+    lua_pushnil(l);
+    return 1;
+  }
+
+  _packOnePrincOnStack(l, &result);
+
+  kadm_freePrincipalEnt(&result);
+
+  return 1; // number of arguments on the stack
+}
+
+int getPrincipalsFunc(lua_State *l)
+{
+  int numargs = lua_gettop(l);
+  if (numargs > 1) {
+    ERROR("usage: kadmin.getPrincipals([pattern])");
+  }
+
+  const char *p = NULL; // optional search pattern
+  if (numargs == 1) {
+    p = lua_tostring(l, 1);
+  }
+
+  char **princList = NULL;
+  int count = 0;
+  kadm5_ret_t ret = kadm_getPrincs(p, &princList, &count);
+  if (ret) {
+    // FIXME: probably not the best, just returning nil - should raise some errors?
+    lua_pushnil(l);
+    return 1;
+  }
+
+  lua_newtable(l); // Construct the resulting array on the stack
+
+  // Push each element on the stack, then push that element in to the table
+  for (int i=0; i<count; i++) {
+    lua_pushstring(l, princList[i]);
+    lua_rawseti(l, -2, i+1);
+  }
+
+  kadm_freeNameList(princList, count);
+
+  return 1; // number of arguments on the stack (just the array)
+}
+
+int createPrincipalFunc(lua_State *l)
+{
+  int numargs = lua_gettop(l);
+  if (numargs != 2) {
+    ERROR("usage: kadmin.createPrincipal(<princ>, <password>)");
+  }
+
+  const char *princ = lua_tostring(l, 1);
+  const char *pw = lua_tostring(l, 2);
+  
+  lua_pushinteger(l, kadm_createPrincipal(princ, pw));
+
+  return 1;
+}
+
+int deletePrincipalFunc(lua_State *l)
+{
+  int numargs = lua_gettop(l);
+  if (numargs != 1) {
+    ERROR("usage: kadmin.deletePrincipal(<princ>)");
+  }
+
+  const char *princ = lua_tostring(l, 1);
+  
+  lua_pushinteger(l, kadm_deletePrincipal(princ));
+
+  return 1;
+}
+
+int lockPrincipalFunc(lua_State *l)
+{
+  int numargs = lua_gettop(l);
+  if (numargs != 1) {
+    ERROR("usage: kadmin.lockPrincipal(<princ>)");
+  }
+
+  const char *princName = lua_tostring(l, 1);
+
+  kadm5_principal_ent_rec princ;
+  kadm5_ret_t ret = kadm_getPrinc(princName,
+                                  &princ);
+  if (ret) {
+    lua_pushinteger(l, ret);
+    return 1;
+  }
+
+  unsigned long now = time(NULL);
+  princ.princ_expire_time = now;
+  ret = kadm_modifyPrincipal(&princ, KADM5_PRINC_EXPIRE_TIME);
+
+  lua_pushinteger(l, ret);
+  return 1;
+}
+
+int unlockPrincipalFunc(lua_State *l)
+{
+  int numargs = lua_gettop(l);
+  if (numargs != 1) {
+    ERROR("usage: kadmin.unlockPrincipal(<princ>)");
+  }
+
+  const char *princName = lua_tostring(l, 1);
+  unsigned long etime = lua_tointeger(l, 2);
+
+  kadm5_principal_ent_rec princ;
+  kadm5_ret_t ret = kadm_getPrinc(princName,
+                                  &princ);
+  if (ret) {
+    lua_pushinteger(l, ret);
+    return 1;
+  }
+
+  princ.princ_expire_time = 0;
+  princ.fail_auth_count = 0;
+  ret = kadm_modifyPrincipal(&princ, KADM5_PRINC_EXPIRE_TIME | KADM5_FAIL_AUTH_COUNT);
+
+  lua_pushinteger(l, ret);
+  return 1;
+}
+
+int setPasswordExpirationFunc(lua_State *l)
+{
+  int numargs = lua_gettop(l);
+  if (numargs != 2) {
+    ERROR("usage: kadmin.setPasswordExpiration(<princ>, <epochtime>)");
+  }
+
+  const char *princName = lua_tostring(l, 1);
+
+  kadm5_principal_ent_rec princ;
+  kadm5_ret_t ret = kadm_getPrinc(princName,
+                                  &princ);
+  if (ret) {
+    lua_pushinteger(l, ret);
+    return 1;
+  }
+
+  princ.pw_expiration = lua_tointeger(l, 2);
+  ret = kadm_modifyPrincipal(&princ, KADM5_PW_EXPIRATION);
+
+  lua_pushinteger(l, ret);
+  return 1;
+}
+
+int changePasswordFunc(lua_State *l)
+{
+  int numargs = lua_gettop(l);
+  if (numargs != 2) {
+    ERROR("usage: kadmin.changePassword(<princ>, <pw>)");
+  }
+
+  const char *princName = lua_tostring(l, 1);
+  const char *pw = lua_tostring(l, 2);
+
+  lua_pushinteger(l, kadm_changePassword(princName, pw));
+  return 1;
+}
+
+int errorFunc(lua_State *l)
+{
+  int numargs = lua_gettop(l);
+  if (numargs > 0) {
+    ERROR("usage: kadmin.error()");
+  }
+
+  lua_pushstring(l, kadm_obtain_errormsg());
+  return 1;
+}
+
+
+void _packOnePrincOnStack(lua_State *l, kadm5_principal_ent_rec *per)
+{
+  lua_createtable(l, 0, 8);
+
+  lua_pushstring(l, "pw_expiration");
+  lua_pushinteger(l, per->pw_expiration);
+  lua_settable(l, -3);
+
+  lua_pushstring(l, "princ_expire_time");
+  lua_pushinteger(l, per->princ_expire_time);
+  lua_settable(l, -3);
+
+  lua_pushstring(l, "last_pwd_change");
+  lua_pushinteger(l, per->last_pwd_change);
+  lua_settable(l, -3);
+
+  lua_pushstring(l, "last_success");
+  lua_pushinteger(l, per->last_success);
+  lua_settable(l, -3);
+
+  lua_pushstring(l, "last_failed");
+  lua_pushinteger(l, per->last_failed);
+  lua_settable(l, -3);
+
+  lua_pushstring(l, "kvno");
+  lua_pushinteger(l, per->kvno);
+  lua_settable(l, -3);
+
+  lua_pushstring(l, "policy");
+  lua_pushstring(l, per->policy);
+  lua_settable(l, -3);
+
+  lua_pushstring(l, "mod_date");
+  lua_pushinteger(l, per->mod_date);
+  lua_settable(l, -3);
 }

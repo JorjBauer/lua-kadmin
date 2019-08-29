@@ -9,14 +9,34 @@
 
 /* metatable, hook for calling gc_context on context structs */
 static const luaL_Reg meta[] = {
-  { "__gc", gc_context },
+  /*  { "__gc", gc_context },*/
   { NULL,   NULL        }
 };
 
 /* function table for this module */
 static const struct luaL_Reg methods[] = {
-  { "thing",        thingfunc                   },
-  { NULL,           NULL                        }
+  // Methods to set the configuration
+  { "setRealm",              setRealmFunc                       },
+  { "setAdminServer",        setAdminServerFunc                 },
+
+  
+  // Methods to interact with Kerberos
+  { "initWithSkey",          initWithSkeyFunc                   },
+  { "initWithPassword",      initWithPasswordFunc               },
+  { "getPrincipal",          getPrincipalFunc                   },
+  { "getPrincipals",         getPrincipalsFunc                  },
+  { "createPrincipal",       createPrincipalFunc                },
+  { "deletePrincipal",       deletePrincipalFunc                },
+  { "lockPrincipal",         lockPrincipalFunc                  },
+  { "unlockPrincipal",       unlockPrincipalFunc                },
+  { "setPasswordExpiration", setPasswordExpirationFunc          },
+  { "changePassword",        changePasswordFunc                 },
+
+  // Methods to retrieve state data
+  { "error",                 errorFunc                          },
+
+  // ... and we're done.
+  { NULL,                    NULL                               }
 };
 
 /* Module initializer, called from Lua when the module is loaded. */
@@ -49,6 +69,8 @@ int luaopen_kadmin(lua_State *L)
   lua_newtable(L);
   luaL_setfuncs(L, methods, 0);
 #endif
+
+  kadm_init();
 
   return 1;                           /* return methods table on the stack */
 

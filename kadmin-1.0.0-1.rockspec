@@ -23,9 +23,9 @@
     type = "builtin",
     modules = { 
     	    kadmin = { 
-	    	   sources = { "kadmin.c", "context.c" },
-		   libraries = { "krb" },
-		   defines = { 'VERSION="1.1"' },
+	    	   sources = { "kadmin.c", "context.c", "kadmin-utils.c"  },
+		   libraries = { "krb5", "kadm5clnt_mit", "com_err", "gssapi_krb5" },
+		   defines = { 'VERSION="1.0.0"' },
 	    }
     },
  }
