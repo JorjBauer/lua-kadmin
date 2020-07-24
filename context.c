@@ -316,4 +316,8 @@ void _packOnePrincOnStack(lua_State *l, kadm5_principal_ent_rec *per)
   lua_pushstring(l, "mod_date");
   lua_pushinteger(l, per->mod_date);
   lua_settable(l, -3);
+
+  lua_pushstring(l, "attributes");
+  lua_pushinteger(l, per->attributes);
+  lua_settable(l, -3);
 }
