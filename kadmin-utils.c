@@ -7,6 +7,7 @@
 krb5_ccache          _cc;
 kadm5_config_params  _params;
 krb5_context         _context;
+int                  _contextInitialized = 0;
 void                *_serverHandle = NULL;
 
 
@@ -27,9 +28,16 @@ kadm5_ret_t kadm_init()
 {
   kadm5_ret_t ret = 0;
 
+  if (_contextInitialized) {
+    krb5_free_context(_context);
+    _contextInitialized = 0;
+  }
+  
   ret = krb5_init_context(&_context);
   FAIL(ret, "from kadm5_init_krb5_context");
 
+  _contextInitialized = 1;
+  
   memset(&_params, 0, sizeof(_params));
 
   ret = krb5_cc_default(_context, &_cc);
@@ -45,6 +53,11 @@ kadm5_ret_t kadm_initWithSkey(const char *princ, const char *keytabPath, const c
   kadm5_ret_t ret = 0;
   char **dbargs = NULL;
 
+  if (_serverHandle) {
+    kadm5_destroy(_serverHandle);
+    _serverHandle = NULL;
+  }
+  
   ret = kadm5_init_with_skey(_context,
 			     (char *)princ,
 			     (char *)keytabPath,
@@ -65,6 +78,11 @@ kadm5_ret_t kadm_initWithPassword(const char *princ, const char *pw, const char 
   kadm5_ret_t ret = 0;
   char **dbargs = NULL;
 
+  if (_serverHandle) {
+    kadm5_destroy(_serverHandle);
+    _serverHandle = NULL;
+  }
+  
   ret = kadm5_init_with_password(_context,
 				 (char *)princ,
 				 (char *)pw,
