@@ -1,8 +1,8 @@
  package = "kadmin"
- version = "1.0.0-1"
+ version = "1.0.1-1"
  source = {
     url = "git://github.com/JorjBauer/lua-kadmin",
-    tag = "v1.0.0"
+    tag = "v1.0.1"
  }
  description = {
     summary = "Kadmin library for Lua 5.1+",
@@ -25,7 +25,7 @@
     	    kadmin = { 
 	    	   sources = { "kadmin.c", "context.c", "kadmin-utils.c"  },
 		   libraries = { "krb5", "kadm5clnt_mit", "com_err", "gssapi_krb5" },
-		   defines = { 'VERSION="1.0.0"' },
+		   defines = { 'VERSION="1.0.1"' },
 	    }
     },
  }
